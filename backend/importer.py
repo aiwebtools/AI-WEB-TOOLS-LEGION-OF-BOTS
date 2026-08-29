@@ -73,7 +73,7 @@ KEEP_VARIANT = re.compile(r"\bv\d\b|\bshort\b|\blong\b|\binteractive\b|\bchildre
 
 def clean_display(name: str) -> str:
     n = name
-    n = re.sub(r"\.docx$", "", n, flags=re.IGNORECASE)
+    n = re.sub(r"\.(docx|txt|md|markdown|doc)$", "", n, flags=re.IGNORECASE)
     n = re.sub(r"\(\d+\)", "", n)             # (1) dup markers
     n = re.sub(r"[⭐️✨🫐★]+", "", n)
     n = re.sub(r"[_]+", " ", n)
@@ -86,7 +86,7 @@ def clean_display(name: str) -> str:
     # collapse dangling separators
     n = re.sub(r"\s{2,}", " ", n).strip()
     if not n:
-        n = re.sub(r"\.docx$", "", name, flags=re.IGNORECASE)
+        n = re.sub(r"\.(docx|txt|md|markdown|doc)$", "", name, flags=re.IGNORECASE)
     # Title case but keep short acronyms
     ACR = {"AI", "GPT", "CT", "MMP", "IQ", "US", "V1", "V2", "V3", "V4", "V5", "V6", "V7", "V8"}
     STOP = {"to", "and", "of", "the", "a", "or", "for", "with", "in", "on"}
@@ -215,21 +215,22 @@ def adapt_instructions(text: str) -> str:
 # ----------------------------------------------------------------------------
 # Build catalog
 # ----------------------------------------------------------------------------
-def build():
-    files = sorted([p for p in SRC_DIR.iterdir() if p.is_file()])
+def process_directory(src_dir, cap_active=150):
+    import enrich
+    src = Path(src_dir)
+    files = sorted([p for p in src.rglob("*") if p.is_file() and not p.name.startswith(".")])
     groups = defaultdict(list)
     records = []
     for p in files:
+        if p.name.lower().endswith(".zip"):
+            continue
         text = extract_text(p)
         if len(text) < 40:
             continue
         h = hashlib.sha256(re.sub(r"\s+", " ", text).strip().lower().encode()).hexdigest()
         rec = {
-            "source_file": p.name,
-            "text": text,
-            "hash": h,
-            "family": family_key(p.name),
-            "display": clean_display(p.name),
+            "source_file": p.name, "text": text, "hash": h,
+            "family": family_key(p.name), "display": clean_display(p.name),
             "score": score_version(p.name, text),
         }
         records.append(rec)
@@ -239,45 +240,47 @@ def build():
     for fam, versions in groups.items():
         versions.sort(key=lambda r: r["score"], reverse=True)
         prod = versions[0]
-        name = prod["display"] or fam.title()
+        name = enrich.polish_name(prod["display"] or fam.title())
         if not name.strip():
             name = fam.title()
         slug = re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")[:60] or fam.replace(" ", "-")
         suite_slug, suite_label, suite_icon = classify_suite(name, prod["text"])
         caps = infer_caps(name, prod["text"])
-        # short description = first meaningful sentence
-        desc = re.sub(r"\s+", " ", prod["text"])[:600]
         m = re.search(r"(You are[^.]{10,180}\.)", prod["text"])
         if m:
             desc = re.sub(r"\s+", " ", m.group(1)).strip()
         else:
             desc = re.sub(r"\s+", " ", prod["text"])[:180].strip() + "..."
         bots.append({
-            "name": name,
-            "slug": slug,
-            "description": desc,
-            "suite_slug": suite_slug,
-            "suite_label": suite_label,
-            "suite_icon": suite_icon,
+            "name": name, "slug": slug, "description": desc,
+            "suite_slug": suite_slug, "suite_label": suite_label, "suite_icon": suite_icon,
             "system_instructions": adapt_instructions(prod["text"]),
-            "raw_instructions": prod["text"],
-            "source_document": prod["source_file"],
+            "raw_instructions": prod["text"], "source_document": prod["source_file"],
             "capabilities": caps,
+            "suggested_prompts": enrich.suggest_prompts(suite_slug, caps),
             "tags": [suite_label] + [k for k, v in caps.items() if v and k in ("image", "python", "document_generation", "research", "creative")],
             "icon": suite_icon,
+            "content_hash": prod["hash"],
             "versions": [
-                {
-                    "source_file": v["source_file"],
-                    "hash": v["hash"],
-                    "score": v["score"],
-                    "is_production": (i == 0),
-                    "char_count": len(v["text"]),
-                }
+                {"source_file": v["source_file"], "hash": v["hash"], "score": v["score"],
+                 "is_production": (i == 0), "char_count": len(v["text"])}
                 for i, v in enumerate(versions)
             ],
             "version_count": len(versions),
             "content_len": len(prod["text"]),
         })
+
+    # collapse duplicate polished names -> keep first (richest), demote rest to library
+    by_name = {}
+    for b in bots:
+        key = b["name"].lower()
+        by_name.setdefault(key, []).append(b)
+    for key, grp in by_name.items():
+        if len(grp) > 1:
+            grp.sort(key=lambda x: (-x["version_count"], -x["content_len"]))
+            for j, b in enumerate(grp[1:], start=1):
+                b["name"] = f"{b['name']} ({b['suite_label'].split()[0]} v{j+1})"
+                b["_dup"] = True
 
     # de-dup slug collisions
     seen = {}
@@ -289,43 +292,41 @@ def build():
         else:
             seen[s] = 0
 
-    # sort: richer, multi-version bots first (more canonical), then by name
-    bots.sort(key=lambda b: (-b["version_count"], -b["content_len"], b["name"].lower()))
-
-    # first 150 -> production catalog; rest -> internal library
+    bots.sort(key=lambda b: (b.get("_dup", False), -b["version_count"], -b["content_len"], b["name"].lower()))
     for i, b in enumerate(bots):
-        b["status"] = "active" if i < 150 else "library"
+        b["status"] = "active" if i < cap_active else "library"
         b["sort_order"] = i
         b["featured"] = i < 12
+        b.pop("_dup", None)
 
-    # suites summary
     suites = {}
     for b in bots:
         if b["status"] != "active":
             continue
         s = b["suite_slug"]
         if s not in suites:
-            suites[s] = {
-                "slug": s, "name": b["suite_label"], "icon": b["suite_icon"],
-                "description": f"{b['suite_label']} — specialized AI bots.", "bot_count": 0,
-            }
+            suites[s] = {"slug": s, "name": b["suite_label"], "icon": b["suite_icon"],
+                         "description": f"{b['suite_label']} — specialized AI bots.", "bot_count": 0}
         suites[s]["bot_count"] += 1
     suite_list = sorted(suites.values(), key=lambda x: -x["bot_count"])
     for i, s in enumerate(suite_list):
         s["sort_order"] = i
         s["featured"] = i < 8
 
-    catalog = {
+    return {
         "total_source_files": len(records),
         "total_bot_families": len(bots),
         "active_bots": sum(1 for b in bots if b["status"] == "active"),
         "library_bots": sum(1 for b in bots if b["status"] == "library"),
-        "suites": suite_list,
-        "bots": bots,
+        "suites": suite_list, "bots": bots,
     }
+
+
+def build():
+    catalog = process_directory(SRC_DIR, cap_active=150)
     (OUT_DIR / "catalog.json").write_text(json.dumps(catalog, ensure_ascii=False))
-    print(f"source_files={len(records)} families={len(bots)} active={catalog['active_bots']} library={catalog['library_bots']} suites={len(suite_list)}")
-    for s in suite_list:
+    print(f"source_files={catalog['total_source_files']} families={catalog['total_bot_families']} active={catalog['active_bots']} library={catalog['library_bots']} suites={len(catalog['suites'])}")
+    for s in catalog["suites"]:
         print(f"  {s['name']}: {s['bot_count']}")
     return catalog
 

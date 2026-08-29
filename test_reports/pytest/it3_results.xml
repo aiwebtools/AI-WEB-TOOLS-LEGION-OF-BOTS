@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="1" skipped="0" tests="12" time="15.547" timestamp="2026-08-29T22:16:25.398871+00:00" hostname="agent-env-de950128-8709-4005-905b-e6c82e632429"><testcase classname="tests.test_iteration3.TestDedupV3" name="test_migration_flags_present" time="0.177" /><testcase classname="tests.test_iteration3.TestDedupV3" name="test_active_150_total_210" time="1.479" /><testcase classname="tests.test_iteration3.TestRegressionFast" name="test_auth_me_admin_and_user" time="1.872" /><testcase classname="tests.test_iteration3.TestDedupV3" name="test_all_active_instructions_unique" time="8.863" /><testcase classname="tests.test_iteration3.TestRegressionFast" name="test_bad_password_rejected" time="0.342" /><testcase classname="tests.test_iteration3.TestRegressionFast" name="test_admin_routes_forbidden_for_user" time="0.205"><failure message="AssertionError: ('/admin/stats', 404)&#10;assert 404 == 403&#10; +  where 404 = &lt;Response [404]&gt;.status_code">self = &lt;test_iteration3.TestRegressionFast object at 0xfd58c7916510&gt;
+user_client = &lt;requests.sessions.Session object at 0xfd58c7915b90&gt;
+
+    def test_admin_routes_forbidden_for_user(self, user_client):
+        for path in ("/admin/bots", "/admin/stats", "/admin/import"):
+            r = user_client.get(f"{API}{path}", timeout=30)
+&gt;           assert r.status_code == 403, (path, r.status_code)
+E           AssertionError: ('/admin/stats', 404)
+E           assert 404 == 403
+E            +  where 404 = &lt;Response [404]&gt;.status_code
+
+tests/test_iteration3.py:140: AssertionError</failure></testcase><testcase classname="tests.test_iteration3.TestRegressionFast" name="test_bots_search_and_filter" time="0.133" /><testcase classname="tests.test_iteration3.TestRegressionFast" name="test_password_hash_format" time="0.060" /><testcase classname="tests.test_iteration3.TestPromptsBotSpecific" name="test_prompt_sets_unique_and_named" time="0.135" /><testcase classname="tests.test_iteration3.TestDedupV3" name="test_suite_counts_sum_to_150" time="2.021" /><testcase classname="tests.test_iteration3.TestDescriptionsClean" name="test_no_doc_headers_in_any_description" time="0.000" /><testcase classname="tests.test_iteration3.TestDescriptionsClean" name="test_spot_check_detail_descriptions" time="2.274" /></testsuite></testsuites>

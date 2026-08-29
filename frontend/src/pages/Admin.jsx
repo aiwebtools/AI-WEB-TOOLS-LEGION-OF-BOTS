@@ -1,13 +1,15 @@
 import { useEffect, useState } from "react";
-import { Shield, Search, Eye, Power, Star } from "lucide-react";
+import { Shield, Search, Eye, Power, Star, Boxes, UploadCloud } from "lucide-react";
 import api from "@/lib/api";
 import { toast } from "sonner";
+import ImportManager from "@/pages/ImportManager";
 
 export default function Admin() {
   const [ov, setOv] = useState(null);
   const [bots, setBots] = useState([]);
   const [q, setQ] = useState("");
   const [sel, setSel] = useState(null);
+  const [tab, setTab] = useState("bots");
 
   const loadBots = () => api.get("/admin/bots", { params: { q: q || undefined } }).then(({ data }) => setBots(data)).catch(() => {});
   useEffect(() => { api.get("/admin/overview").then(({ data }) => setOv(data)).catch(() => {}); }, []);
@@ -37,6 +39,14 @@ export default function Admin() {
         </div>
       )}
 
+      <div className="flex items-center gap-2 mb-6 border-b border-border">
+        <button onClick={() => setTab("bots")} data-testid="admin-tab-bots" className={`flex items-center gap-2 px-4 py-2 text-sm font-mono border-b-2 -mb-px transition-colors ${tab === "bots" ? "border-matrix text-matrix" : "border-transparent text-muted-foreground hover:text-white"}`}><Boxes className="w-4 h-4" /> Bots</button>
+        <button onClick={() => setTab("import")} data-testid="admin-tab-import" className={`flex items-center gap-2 px-4 py-2 text-sm font-mono border-b-2 -mb-px transition-colors ${tab === "import" ? "border-matrix text-matrix" : "border-transparent text-muted-foreground hover:text-white"}`}><UploadCloud className="w-4 h-4" /> Import Manager</button>
+      </div>
+
+      {tab === "import" && <ImportManager />}
+
+      {tab === "bots" && (<>
       <div className="flex items-center gap-2 px-3 py-2.5 bg-card border border-border rounded-sm mb-4 max-w-md focus-within:border-matrix/50 transition-colors">
         <Search className="w-4 h-4 text-matrix" />
         <input data-testid="admin-bot-search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search bots..." className="flex-1 bg-transparent outline-none text-white font-mono text-sm" />
@@ -72,6 +82,7 @@ export default function Admin() {
           </tbody>
         </table>
       </div>
+      </>)}
 
       {sel && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm" onClick={() => setSel(null)}>

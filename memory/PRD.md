@@ -18,21 +18,20 @@ A free, premium AI hub of ~150 specialized bots (deduplicated from 279 supplied 
 Auth, per-user data isolation, 150-bot catalog w/ suites, global search, bot workspace w/ streaming + model switch, favorites, recent, conversation persistence, memory, document generation, python tool, image vision, admin panel, matrix UI, MORE AI TOOLS links.
 
 ## Implemented (2026-06)
-- ✅ Auth: register/login/me/logout/forgot/reset (JWT), Emergent Google login, brute-force lockout, admin seed.
-- ✅ 150 active bots / 14 suites seeded from real instructions; public endpoints exclude system_instructions.
-- ✅ Dashboard (stats, continue working, favorites, recent, featured, suites), global search overlay.
-- ✅ All Bots (filters: suite/capability/sort/search), Suites + suite detail.
-- ✅ Bot workspace: SSE streaming chat, markdown + code copy, per-bot instruction isolation, model selector, image upload (vision), document generation + download, regenerate/copy/stop, conversation sidebar.
-- ✅ Conversations (list/rename/delete/search), favorites, recent, memory settings, profile.
-- ✅ Admin: overview, bot table (all 210), feature/status toggle, instruction preview modal (admin-only), route-guarded.
-- ✅ Matrix theme, MORE AI TOOLS buttons, mobile responsive drawers, legal pages.
-- ✅ Tested: backend 100% (52 passed), frontend ~92% → 3 issues fixed (generate-file leak, admin guard, admin row cap).
+- ✅ Auth (JWT email/password + Emergent Google), 150 active / 210 total bots, 14 suites, dashboard, global search.
+- ✅ Bot workspace: SSE streaming, per-bot instruction isolation, model selector, markdown+code, regenerate/copy/stop.
+- ✅ Conversations, favorites, recent, memory, admin panel, matrix UI, MORE AI TOOLS links, mobile responsive.
+- ✅ **Import Manager** (admin): upload ZIP → dedup preview (new/duplicate) → publish to internal library; history; source files never overwritten.
+- ✅ **Cleaner Names + descriptions**: enrich_v2 (polish names) + dedup_v3 (content-hash dedup → 150 byte-unique active bots, cleaned descriptions) + names_v4 (rough-name polish).
+- ✅ **File Attachments**: images (any model) + PDF/CSV/TXT/DOCX/XLSX (text injected; binary auto-routes to Gemini).
+- ✅ **Prompt Library**: per-bot suggested_prompts (name-personalized) on the workspace empty state.
+- ✅ Document generation (DOCX/PDF/CSV/TXT/MD downloads, ownership-checked), sandboxed Python tool.
+- ✅ Verified: testing agent iterations 1-3 → backend 100% (85 tests), frontend 100%; all 150 bots unique + in-character; multi-user authorization enforced.
 
-## Backlog / Remaining
-- P1: Improve importer name cleaning for a few raw/add-on titles; tighten dedup of Book Writer V1–V8 variants.
-- P1: Admin import-manager UI (upload ZIP, dedup review) + version restore UI.
-- P2: PDF/CSV/XLSX richer formatting; non-image file (PDF/CSV) attachments via Gemini; regression test harness UI.
-- P2: Rate limiting headers, account export/delete, conversation archive UI.
+## Backlog / Remaining (cosmetic/optional)
+- P2: LLM-generated conversation titles (currently first 60 chars); humanize a few bot descriptions.
+- P2: notice when files are attached to a non-files bot; split server.py into routers; bulk_write migrations at larger scale.
+- P2: hash-dedup at import-publish time; object storage for generated files when deploying.
 
 ## Credentials
 - Admin: admin@legion.ai / LegionAdmin2026!

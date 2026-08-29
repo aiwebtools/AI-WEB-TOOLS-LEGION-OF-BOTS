@@ -1,0 +1,53 @@
+{
+  "summary": "Iteration 2 full retest (backend + frontend). Created /app/backend/tests/test_iteration2.py (24 tests): structural pass over ALL 150 active bots (public leak check, capabilities, suggested_prompts, valid suite; admin instructions non-empty + uniqueness), cleaner-names checks + enrich_v2 migration flag, prompt library, file attachments (CSV text-inject + PDF -> auto Gemini + persisted attachment metadata), admin Import Manager (import/publish/duplicate-reimport/history/authz), multi-user authorization (conversations, memory, favorites, file download ownership), and live-LLM persona/isolation sample across all 14 suites + prompt-injection refusal. Regression: backend_test.py 46/46 pass, test_files_and_images.py 3 pass/1 skip, test_iteration2.py 23/24 pass. Frontend Playwright: login, /admin guard for non-admin, all-bots search+suite filter, bot workspace bot-specific suggestions (suggestion-0..3) -> streamed reply with no generate-file JSON leak, doc attach (doc-input -> doc-chip-0 -> CSV analyzed 'Bolt quantity: 19'), admin Bots tab (211 rows) + Import Manager tab (upload zip -> preview 1 new -> publish -> library + history). ONLY real defect found: 27 active bots (12 groups) share byte-identical system_instructions, so user-visible duplicate bots answer with the same persona.",
+  "backend_issues": {
+    "critical": [
+      {"endpoint": "GET /api/admin/bots/{id} (data/dedup)", "issue": "27 of 150 ACTIVE bots share byte-identical system_instructions across 12 groups, so they are not distinct bots. Groups: [Time Machine | Time Machine 2nd], [Data Analysis and Report | Data Analysis Report], [Custom Maker | Godmode], [Data Analysis and Report - - Added Protection | Data Analysis Reportai - Operationa], [Cannabis W Algebraic Functions | Hemp - Cannabis to Prepare | Hemp for Masking | Leafly IQ - Hemp Using Algebra], [Material Valuation You Are Known As | Materiumor], [Oraculum - the Illuminator... | Oraculum - the Revealer... | Oraculum the Revealer of Hidden Truth Moral], [Agronomus | Agronomus the Farmer], [NEO Matrix (v2) | Matrix Neo], [Jarvis -ryans Jarvis | Jarvis- Ryans Bot], [Comic Book Generator | Comic Book Maker], [Algebraic Expression Inventor | Math Creator - Alerbra Creation to Solve]. Verified live: 'Cannabis W Algebraic Functions' and 'Hemp - Cannabis to Prepare' both introduce themselves as the identical persona \"I'm Leafy I.Q.\" — user-visible duplication. Dedup should be by content hash (not just family/name) and extra copies demoted to status='library'.", "priority": "CRITICAL"}
+    ],
+    "minor": [
+      {"endpoint": "data / enrich.suggest_prompts", "issue": "suggested_prompts are per-SUITE, not per-bot: only 14 distinct prompt sets across 150 bots (largest group = 26 bots share the same 4 prompts). Requirement asked for the bot's OWN prompts; currently generic within a suite."},
+      {"endpoint": "bot.description (all public endpoints)", "issue": "Descriptions still contain raw document headers, e.g. book-writer shows 'BOOK WRITER GPT FINAL AWESOME PERFECT INSTRUCTIONS 3/25/24 Original Version (no compiler) As Book Writer GPT...' in the workspace empty state. Descriptions were not cleaned by enrich_v2."},
+      {"endpoint": "POST /api/admin/import/{job_id}/publish", "issue": "Duplicate consecutive db.import_jobs.update_one calls (server.py:787-788); the first is dead code."},
+      {"endpoint": "POST /api/chat/stream", "issue": "body.files is silently ignored when the bot lacks capabilities.files (no 4xx/warning). Consider returning a notice so the user knows the attachment was dropped."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Bot workspace empty state", "issues": ["Bot description under the title shows raw instruction-doc header text (e.g. 'BOOK WRITER GPT FINAL AWESOME PERFECT INSTRUCTIONS 3/25/24 Original Version (no compiler)...') — looks unpolished for a premium hub"]},
+      {"screen": "Bot workspace left rail", "issues": ["Conversation titles are raw first-60-chars of the message, so QA/short prompts render as near-identical entries ('Reply with just: PONG'); consider LLM/summary titles or de-dup"]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration2.py",
+    "/app/backend/tests/backend_test.py",
+    "/app/backend/tests/test_files_and_images.py",
+    "/app/test_reports/pytest/iteration2_results.xml"
+  ],
+  "action_items": [
+    "CRITICAL: de-duplicate the 12 identical-instruction groups (27 active bots) by content hash; keep the richest version active and set the rest to status='library' so all 150 active bots are genuinely unique (re-run test_iteration2.py::TestAllBotsStructural::test_admin_instructions_non_empty_and_unique).",
+    "Make suggested_prompts bot-specific (derive 2-4 prompts from each bot's own instructions/name) instead of one set per suite.",
+    "Clean bot descriptions (strip doc headers like 'FINAL AWESOME PERFECT INSTRUCTIONS', dates, 'Original Version (no compiler)') in the enrich migration.",
+    "Polish remaining truncated/typo names: 'Data Analysis Reportai - Operationa', 'Material Valuation You Are Known As', 'Oraculum - the Illuminator of Hidden Truths-', 'Oraculum Revealer of Truth - - - TOO RAW TOO', 'Data Analysis Report - 30 No Protection - No', 'Crop-sensei Is An Agricultural Predict and', 'Dispensary Staff Assistant -variable Verision'.",
+    "Remove the duplicated update_one in admin_import_publish."
+  ],
+  "critical_code_review_comments": [
+    "importer.process_directory groups versions by family_key(filename) only; content_hash is computed but never used for cross-family dedup — root cause of the 27 duplicate-instruction bots.",
+    "server.py is 835 lines and mixes auth, chat, files, admin and import routes; split into routers (auth/bots/chat/admin) for maintainability.",
+    "chat_stream builds temp files and relies on _cleanup_tmp inside the generator; if the client disconnects mid-stream the temp dir leaks — wrap in try/finally.",
+    "llm.stream_bot_reply silently overrides the user-selected model when binary files are attached; the UI/start event exposes it (good) but the chosen model isn't restored for subsequent turns' UI state."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration2.py (new)",
+    "/app/backend/tests/_inspect.py (new diagnostic script)",
+    "/app/backend/tests/_persona_sample.py (new diagnostic script)"
+  ],
+  "success_rate": {"backend": "96% (72/73 tests: 46+3+23 pass, 1 fail, 1 skip)", "frontend": "100% of tested flows (9/9)"},
+  "seed_data_creation": "Temp only, all cleaned up: TEST_qa2_* second user (registered, left in db for authz tests), 2 'Test QA Import Alpha/Beta' + 1 'Test UI Zeta' library bots and TEST_*.zip import jobs deleted after tests; active/total bot counts verified back at 150/210.",
+  "should_call_test_agent_after_fix": true,
+  "should_main_agent_self_test": false,
+  "test_credentials": "admin@legion.ai / LegionAdmin2026! and testuser@legion.ai / TestUser2026! from /app/memory/test_credentials.md — both valid.",
+  "context_for_next_testing_agent": "Run `python -m pytest tests/test_iteration2.py -q` from /app/backend (pytest.ini has -n 2 --dist loadscope). Only failing test is TestAllBotsStructural::test_admin_instructions_non_empty_and_unique (real dedup defect). /app/backend/tests/_inspect.py prints duplicate-instruction groups, ugly names and prompt-set uniqueness directly from Mongo — use it to verify the dedup fix. New feature verification already covered: import manager (zip/publish/duplicate), attachments (CSV text-inject stays on selected model; PDF forces start-event model 'gemini-3.1-pro' and content was read), prompt library UI (suggestion-0..3), /admin guard, multi-user authz. Note publishing imports increases total bot count; clean up bots named 'Test QA Import*'/'Test UI Zeta' after import tests.",
+  "rca_of_the_issue": "importer.process_directory keys version groups on family_key(filename); two source docs describing the same bot under different filenames (e.g. 'Cannabis w Alegraic Functions' vs 'Hemp for Masking' vs 'Leafly IQ ...') land in different families, so both become separate active bots with the identical production text. The record's sha256 content_hash is only persisted in versions[] and used for import-time duplicate detection, never for collapsing the seeded catalog. Fix: after grouping, collapse bots whose production content_hash matches and demote extras to status='library', then re-run migrate with a new meta flag."
+}

@@ -2,7 +2,7 @@
 Supports per-request model selection and streaming with vision + history."""
 import os
 from emergentintegrations.llm.chat import (
-    LlmChat, UserMessage, ImageContent, TextDelta, StreamDone,
+    LlmChat, UserMessage, ImageContent, FileContentWithMimeType, TextDelta, StreamDone,
 )
 
 KEY = os.environ["EMERGENT_LLM_KEY"]
@@ -69,18 +69,28 @@ def _compose_user_text(history: list, text: str) -> str:
 
 
 async def stream_bot_reply(bot: dict, model_id: str, history: list, text: str,
-                           images_b64: list = None, memory_text: str = ""):
-    """Async generator yielding text chunks."""
-    provider, model = resolve_model(model_id)
+                           images_b64: list = None, memory_text: str = "",
+                           files: list = None, extra_context: str = ""):
+    """Async generator yielding text chunks.
+    files: list of {path, mime} for binary docs (forces Gemini for that turn)."""
+    files = files or []
+    if files:
+        provider, model = ("gemini", "gemini-3.1-pro-preview")  # only Gemini supports file paths
+    else:
+        provider, model = resolve_model(model_id)
     system_message = build_system_message(bot, memory_text)
     session_id = f"bot-{bot['id']}-{os.urandom(4).hex()}"
     chat = LlmChat(api_key=KEY, session_id=session_id, system_message=system_message).with_model(provider, model)
 
     user_text = _compose_user_text(history, text)
+    if extra_context:
+        user_text += "\n\n" + extra_context
     file_contents = []
     if images_b64:
         for b64 in images_b64:
             file_contents.append(ImageContent(image_base64=b64))
+    for f in files:
+        file_contents.append(FileContentWithMimeType(file_path=f["path"], mime_type=f["mime"]))
 
     msg = UserMessage(text=user_text, file_contents=file_contents or None)
     async for ev in chat.stream_message(msg):

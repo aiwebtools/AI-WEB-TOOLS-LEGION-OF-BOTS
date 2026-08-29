@@ -2,7 +2,7 @@ import { useEffect, useState, useRef, useCallback } from "react";
 import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import {
   Send, Plus, Star, ImageIcon, X, Loader2, Download, ChevronLeft, ChevronRight,
-  Square, Copy, RefreshCw, Check, Cpu, ArrowLeft, Trash2,
+  Square, Copy, RefreshCw, Check, Cpu, ArrowLeft, Trash2, Paperclip, FileText,
 } from "lucide-react";
 import api, { API, getToken } from "@/lib/api";
 import { iconFor } from "@/lib/icons";
@@ -26,6 +26,7 @@ export default function BotWorkspace() {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
   const [images, setImages] = useState([]);
+  const [docs, setDocs] = useState([]);
   const [streaming, setStreaming] = useState(false);
   const [streamText, setStreamText] = useState("");
   const [fav, setFav] = useState(false);
@@ -78,15 +79,27 @@ export default function BotWorkspace() {
     e.target.value = "";
   };
 
+  const onDoc = (e) => {
+    const files = Array.from(e.target.files || []).slice(0, 5);
+    files.forEach((f) => {
+      if (f.size > 15 * 1024 * 1024) { toast.error(`${f.name} is too large (max 15MB).`); return; }
+      const reader = new FileReader();
+      reader.onload = () => setDocs((d) => [...d, { name: f.name, mime: f.type || "application/octet-stream", data: String(reader.result).split(",")[1] }]);
+      reader.readAsDataURL(f);
+    });
+    e.target.value = "";
+  };
+
   const stop = () => { if (abortRef.current) abortRef.current.abort(); };
 
   const send = async (overrideText) => {
     const text = (overrideText ?? input).trim();
     if (!text || streaming) return;
     const sendImages = bot?.capabilities?.image ? images.map((i) => i.b64) : [];
-    const userMsg = { id: `tmp-${Date.now()}`, role: "user", content: text, images: images.map((i) => i.dataUrl) };
+    const sendDocs = bot?.capabilities?.files ? docs.map((d) => ({ name: d.name, mime: d.mime, data: d.data })) : [];
+    const userMsg = { id: `tmp-${Date.now()}`, role: "user", content: text, images: images.map((i) => i.dataUrl), attachments: docs.map((d) => ({ name: d.name, mime: d.mime })) };
     setMessages((m) => [...m, userMsg]);
-    setInput(""); setImages([]); setStreaming(true); setStreamText("");
+    setInput(""); setImages([]); setDocs([]); setStreaming(true); setStreamText("");
     if (taRef.current) taRef.current.style.height = "auto";
 
     const controller = new AbortController();
@@ -99,7 +112,7 @@ export default function BotWorkspace() {
       const resp = await fetch(`${API}/chat/stream`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${getToken()}` },
-        body: JSON.stringify({ bot_slug: slug, conversation_id: convId, message: text, model, images: sendImages }),
+        body: JSON.stringify({ bot_slug: slug, conversation_id: convId, message: text, model, images: sendImages, files: sendDocs }),
         signal: controller.signal,
       });
       if (!resp.ok || !resp.body) throw new Error("stream failed");
@@ -148,12 +161,14 @@ export default function BotWorkspace() {
   if (!bot) return <div className="h-full flex items-center justify-center text-muted-foreground font-mono"><Loader2 className="w-5 h-5 animate-spin mr-2" /> Loading bot...</div>;
   const Icon = iconFor(bot.icon);
 
-  const suggestions = [
-    `What can you help me with?`,
-    `Walk me through your process step by step.`,
-    bot.capabilities.document_generation ? `Create a document I can download.` : `Give me a detailed example.`,
-    `What information do you need from me to start?`,
-  ];
+  const suggestions = (bot.suggested_prompts && bot.suggested_prompts.length)
+    ? bot.suggested_prompts
+    : [
+        `What can you help me with?`,
+        `Walk me through your process step by step.`,
+        bot.capabilities.document_generation ? `Create a document I can download.` : `Give me a detailed example.`,
+        `What information do you need from me to start?`,
+      ];
 
   return (
     <div className="h-full flex overflow-hidden">
@@ -216,6 +231,11 @@ export default function BotWorkspace() {
                     {m.images?.length > 0 && (
                       <div className="flex flex-wrap gap-2 mb-2">{m.images.map((src, i) => <img key={i} src={src} alt="" className="w-24 h-24 object-cover rounded-sm border border-border" />)}</div>
                     )}
+                    {m.attachments?.length > 0 && (
+                      <div className="flex flex-wrap gap-2 mb-2">{m.attachments.map((a, i) => (
+                        <span key={i} className="inline-flex items-center gap-1.5 bg-input border border-border rounded-sm px-2 py-1 text-xs text-matrix/90"><FileText className="w-3.5 h-3.5" />{a.name}</span>
+                      ))}</div>
+                    )}
                     <div className="text-sm text-white whitespace-pre-wrap">{m.content}</div>
                   </div>
                 ) : (
@@ -257,6 +277,17 @@ export default function BotWorkspace() {
                 ))}
               </div>
             )}
+            {docs.length > 0 && (
+              <div className="flex flex-wrap gap-2 mb-2">
+                {docs.map((d, i) => (
+                  <div key={i} className="flex items-center gap-2 bg-input border border-border rounded-sm px-2 py-1.5" data-testid={`doc-chip-${i}`}>
+                    <FileText className="w-4 h-4 text-matrix shrink-0" />
+                    <span className="text-xs text-white max-w-[160px] truncate">{d.name}</span>
+                    <button onClick={() => setDocs((dd) => dd.filter((_, x) => x !== i))} className="text-muted-foreground hover:text-destructive"><X className="w-3 h-3" /></button>
+                  </div>
+                ))}
+              </div>
+            )}
             <div className="flex items-end gap-2 bg-input border border-border rounded-sm px-3 py-2 focus-within:border-matrix/50 transition-colors">
               {bot.capabilities.image ? (
                 <label className="p-1.5 text-muted-foreground hover:text-matrix cursor-pointer" title="Attach image" data-testid="attach-image-btn">
@@ -265,6 +296,12 @@ export default function BotWorkspace() {
                 </label>
               ) : (
                 <span className="p-1.5 text-muted-foreground/40" title="Image analysis unavailable for this bot"><ImageIcon className="w-5 h-5" /></span>
+              )}
+              {bot.capabilities.files && (
+                <label className="p-1.5 text-muted-foreground hover:text-matrix cursor-pointer" title="Attach file (PDF, CSV, TXT, DOCX, XLSX)" data-testid="attach-doc-btn">
+                  <Paperclip className="w-5 h-5" />
+                  <input type="file" accept=".pdf,.csv,.txt,.md,.json,.docx,.xlsx,.doc,.xls" multiple hidden onChange={onDoc} data-testid="doc-input" />
+                </label>
               )}
               <textarea
                 ref={taRef}

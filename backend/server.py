@@ -20,7 +20,7 @@ from pydantic import BaseModel, EmailStr, Field
 import auth as A
 import llm as L
 import tools as T
-from seed import seed_catalog
+from seed import seed_catalog, migrate_bots, migrate_dedup_v3, migrate_names_v4
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("legion")
@@ -36,6 +36,12 @@ PUBLIC_BOT_FIELDS = {"_id": 0, "system_instructions": 0, "versions": 0, "source_
 
 def now_iso():
     return datetime.now(timezone.utc).isoformat()
+
+
+def _cleanup_tmp(path):
+    if path:
+        import shutil
+        shutil.rmtree(path, ignore_errors=True)
 
 
 # ----------------------------------------------------------------------------
@@ -71,6 +77,7 @@ class ChatBody(BaseModel):
     message: str
     model: Optional[str] = None
     images: Optional[List[str]] = None  # base64 strings
+    files: Optional[List[dict]] = None  # [{name, mime, data(base64)}]
 
 
 class RenameBody(BaseModel):
@@ -405,6 +412,35 @@ async def chat_stream(body: ChatBody, user=Depends(A.get_current_user)):
     if images and not bot.get("capabilities", {}).get("image"):
         images = []  # silently drop; UI prevents this
 
+    # file attachments (pdf/csv/txt/docx/xlsx). text-like -> inject; binary -> temp file (Gemini)
+    import base64 as _b64, tempfile as _tf
+    TEXT_MIMES = ("text/plain", "text/csv", "text/markdown", "application/json")
+    attach_files = []       # binary docs for Gemini
+    extra_context = ""
+    attach_meta = []        # for persistence/UI
+    tmp_dir = None
+    if body.files and bot.get("capabilities", {}).get("files"):
+        tmp_dir = _tf.mkdtemp(prefix="legion_up_")
+        for fa in body.files[:5]:
+            try:
+                raw = _b64.b64decode(fa.get("data", ""))
+            except Exception:
+                continue
+            name = os.path.basename(fa.get("name", "file"))
+            mime = fa.get("mime", "application/octet-stream")
+            attach_meta.append({"name": name, "mime": mime, "size": len(raw)})
+            if mime in TEXT_MIMES or name.lower().endswith((".txt", ".csv", ".md", ".json")):
+                try:
+                    content = raw.decode("utf-8", errors="ignore")[:40000]
+                    extra_context += f"\n\n[Attached file: {name}]\n{content}\n"
+                except Exception:
+                    pass
+            else:
+                path = os.path.join(tmp_dir, name)
+                with open(path, "wb") as fh:
+                    fh.write(raw)
+                attach_files.append({"path": path, "mime": mime})
+
     # conversation
     conv = None
     if body.conversation_id:
@@ -435,7 +471,7 @@ async def chat_stream(body: ChatBody, user=Depends(A.get_current_user)):
     # save user message
     user_msg = {
         "id": str(uuid.uuid4()), "conversation_id": conv["id"], "role": "user",
-        "content": body.message, "images": images[:4], "created_at": now_iso(),
+        "content": body.message, "images": images[:4], "attachments": attach_meta, "created_at": now_iso(),
     }
     await db.messages.insert_one({**user_msg})
 
@@ -444,10 +480,11 @@ async def chat_stream(body: ChatBody, user=Depends(A.get_current_user)):
     await _usage(user, "conversation_message", {"bot_id": bot["id"]})
 
     async def event_gen():
-        yield f"data: {json.dumps({'type': 'start', 'conversation_id': conv['id'], 'model': model_id})}\n\n"
+        note_model = "gemini-3.1-pro" if attach_files else model_id
+        yield f"data: {json.dumps({'type': 'start', 'conversation_id': conv['id'], 'model': note_model})}\n\n"
         acc = ""
         try:
-            async for chunk in L.stream_bot_reply(bot, model_id, history, body.message, images, memory_text):
+            async for chunk in L.stream_bot_reply(bot, model_id, history, body.message, images, memory_text, files=attach_files, extra_context=extra_context):
                 acc += chunk
                 yield f"data: {json.dumps({'type': 'delta', 'content': chunk})}\n\n"
         except Exception as e:
@@ -455,6 +492,7 @@ async def chat_stream(body: ChatBody, user=Depends(A.get_current_user)):
             err = "The AI provider returned an error. Please try again or switch models."
             yield f"data: {json.dumps({'type': 'error', 'content': err + f' ({str(e)[:120]})'})}\n\n"
             if not acc:
+                _cleanup_tmp(tmp_dir)
                 return
 
         # document generation
@@ -485,6 +523,7 @@ async def chat_stream(body: ChatBody, user=Depends(A.get_current_user)):
         if gen_file:
             yield f"data: {json.dumps({'type': 'file', 'file': gen_file})}\n\n"
         yield f"data: {json.dumps({'type': 'done', 'message_id': assistant_msg['id'], 'conversation_id': conv['id']})}\n\n"
+        _cleanup_tmp(tmp_dir)
 
     return StreamingResponse(event_gen(), media_type="text/event-stream",
                              headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no", "Connection": "keep-alive"})
@@ -630,6 +669,131 @@ async def root():
     return {"message": "LEGION API online"}
 
 
+# ----------------------------------------------------------------------------
+# Admin: Import Manager
+# ----------------------------------------------------------------------------
+IMPORT_DIR = None
+
+
+@api.post("/admin/import")
+async def admin_import(file: UploadFile = File(...), admin=Depends(A.get_admin_user)):
+    import zipfile, tempfile, shutil
+    import importer as IMP
+    if not file.filename.lower().endswith(".zip"):
+        raise HTTPException(status_code=400, detail="Please upload a .zip archive of instruction documents.")
+    data = await file.read()
+    if len(data) > 200 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="Archive too large (max 200MB).")
+    tmp = tempfile.mkdtemp(prefix="legion_import_")
+    try:
+        zip_path = os.path.join(tmp, "archive.zip")
+        with open(zip_path, "wb") as fh:
+            fh.write(data)
+        try:
+            with zipfile.ZipFile(zip_path) as zf:
+                zf.extractall(os.path.join(tmp, "extracted"))
+        except Exception:
+            raise HTTPException(status_code=400, detail="Could not read the ZIP archive.")
+        catalog = IMP.process_directory(os.path.join(tmp, "extracted"), cap_active=10 ** 9)
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+    # duplicate detection vs existing bots (name or content hash)
+    existing_names = {b["name"].lower() async for b in db.bots.find({}, {"_id": 0, "name": 1})}
+    existing_hashes = set()
+    async for b in db.bots.find({}, {"_id": 0, "versions": 1}):
+        for v in b.get("versions", []):
+            if v.get("hash"):
+                existing_hashes.add(v["hash"])
+
+    detected = []
+    new_count = 0
+    for b in catalog["bots"]:
+        is_dup = b["name"].lower() in existing_names or b.get("content_hash") in existing_hashes
+        detected.append({
+            "name": b["name"], "slug": b["slug"], "suite_label": b["suite_label"],
+            "capabilities": b["capabilities"], "version_count": b["version_count"],
+            "source_document": b["source_document"], "status": "duplicate" if is_dup else "new",
+        })
+        if not is_dup:
+            new_count += 1
+
+    job_id = str(uuid.uuid4())
+    await db.import_jobs.insert_one({
+        "id": job_id, "filename": file.filename, "created_at": now_iso(),
+        "total_source_files": catalog["total_source_files"],
+        "detected": len(detected), "new_count": new_count,
+        "duplicate_count": len(detected) - new_count, "published": False,
+        "catalog": catalog,  # stored in Mongo for the publish step (deploy-safe)
+    })
+    return {
+        "job_id": job_id, "filename": file.filename,
+        "total_source_files": catalog["total_source_files"],
+        "detected_bots": detected, "new_count": new_count,
+        "duplicate_count": len(detected) - new_count,
+        "suites": [{"name": s["name"], "bot_count": s["bot_count"]} for s in catalog["suites"]],
+    }
+
+
+@api.post("/admin/import/{job_id}/publish")
+async def admin_import_publish(job_id: str, admin=Depends(A.get_admin_user)):
+    job = await db.import_jobs.find_one({"id": job_id})
+    if not job or "catalog" not in job:
+        raise HTTPException(status_code=404, detail="Import job not found or expired.")
+    catalog = job["catalog"]
+
+    existing_names = {b["name"].lower() async for b in db.bots.find({}, {"_id": 0, "name": 1})}
+    existing_hashes = set()
+    async for b in db.bots.find({}, {"_id": 0, "versions": 1}):
+        for v in b.get("versions", []):
+            if v.get("hash"):
+                existing_hashes.add(v["hash"])
+
+    now = now_iso()
+    added = 0
+    max_sort = await db.bots.count_documents({})
+    for b in catalog["bots"]:
+        if b["name"].lower() in existing_names or b.get("content_hash") in existing_hashes:
+            continue
+        # ensure suite exists
+        if not await db.suites.find_one({"slug": b["suite_slug"]}):
+            await db.suites.insert_one({
+                "id": str(uuid.uuid4()), "slug": b["suite_slug"], "name": b["suite_label"],
+                "icon": b["suite_icon"], "description": f"{b['suite_label']} — specialized AI bots.",
+                "bot_count": 0, "sort_order": 99, "featured": False, "created_at": now,
+            })
+        slug = b["slug"]
+        while await db.bots.find_one({"slug": slug}):
+            slug = f"{b['slug']}-{uuid.uuid4().hex[:4]}"
+        await db.bots.insert_one({
+            "id": str(uuid.uuid4()), "name": b["name"], "slug": slug,
+            "description": b["description"], "suite_slug": b["suite_slug"],
+            "suite_label": b["suite_label"], "icon": b["suite_icon"],
+            "system_instructions": b["system_instructions"], "source_document": b["source_document"],
+            "capabilities": b["capabilities"], "suggested_prompts": b.get("suggested_prompts", []),
+            "tags": b["tags"], "status": "library", "featured": False,
+            "sort_order": max_sort + added, "version_count": b["version_count"],
+            "versions": b["versions"], "default_model": "claude-sonnet-4-6",
+            "usage_count": 0, "created_at": now, "updated_at": now,
+        })
+        existing_names.add(b["name"].lower())
+        added += 1
+
+    # refresh suite counts
+    for s in await db.suites.find({}, {"_id": 0, "slug": 1}).to_list(500):
+        cnt = await db.bots.count_documents({"suite_slug": s["slug"], "status": "active"})
+        await db.suites.update_one({"slug": s["slug"]}, {"$set": {"bot_count": cnt}})
+
+    await db.import_jobs.update_one({"id": job_id}, {"$set": {"published": True, "added": added}, "$unset": {"catalog": ""}})
+    return {"ok": True, "added": added, "status": "Published to internal library. Activate bots individually from the Bots tab."}
+
+
+@api.get("/admin/import")
+async def admin_import_history(admin=Depends(A.get_admin_user)):
+    jobs = await db.import_jobs.find({}, {"_id": 0, "catalog": 0}).sort("created_at", -1).to_list(50)
+    return jobs
+
+
 app.include_router(api)
 
 app.add_middleware(
@@ -652,6 +816,12 @@ async def startup():
     await db.password_reset_tokens.create_index("expires_at")
     result = await seed_catalog(db)
     logger.info(f"Seed: {result}")
+    mig = await migrate_bots(db)
+    logger.info(f"Migrate: {mig}")
+    dd = await migrate_dedup_v3(db)
+    logger.info(f"Dedup: {dd}")
+    nm = await migrate_names_v4(db)
+    logger.info(f"Names: {nm}")
     # admin seed
     admin_email = os.environ.get("ADMIN_EMAIL", "admin@legion.ai")
     admin_pw = os.environ.get("ADMIN_PASSWORD", "LegionAdmin2026!")
