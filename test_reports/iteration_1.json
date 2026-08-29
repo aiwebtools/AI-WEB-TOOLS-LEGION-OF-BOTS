@@ -1,0 +1,58 @@
+{
+  "summary": "Full backend + frontend E2E testing of LEGION OF BOTS. Backend: 53 pytest tests (auth/JWT, bcrypt, lockout path, bots catalog 150, 14 suites, filters/sort/search, bot-instruction isolation via real SSE streaming on 2 personas + prompt-leak attempt, conversation CRUD/persistence, favorites, recent, dashboard, memory, python tool, admin authz, DOCX generation + download + ownership, vision/image chat) — all passed (1 skipped as not applicable). Frontend: landing, UI register, login, dashboard, All Bots (150 cards + search/suite/sort filters), Suites + suite detail, global search overlay, bot workspace streaming chat with markdown, model selector, favorite toggle, conversations page rename/delete, Settings memory add/remove/toggle, admin panel (overview, search, instructions modal, status/feature toggles), logout, mobile drawer — all functional. 3 real issues found (1 HIGH visual leak of the generate-file JSON during streaming, missing admin route guard, admin table 200-row cap).",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "GET /api/admin/bots", "issue": "Returns all 210 bots unpaginated; frontend slices to 200 so 10 bots are unreachable in the admin UI. Add limit/skip or server-side pagination."},
+      {"endpoint": "POST /api/chat/stream", "issue": "Images for non-image-capable bots are silently dropped (no warning event). Also every one of the 150 seeded bots has capabilities.image=true, so image gating is effectively never enforced/verifiable (importer heuristic marks image=true for all)."},
+      {"endpoint": "POST /api/auth/login", "issue": "Brute-force lockout counter is keyed on ip:email and resets on success; correct behaviour observed, but lockout is not surfaced with Retry-After header (minor)."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "BotWorkspace (streaming finalize)", "issue": "During/right after streaming, the raw ```generate-file {\"format\":\"docx\",\"filename\":...,\"content\":...}``` block is rendered as a code block in the assistant bubble. The backend strips it before persisting, so it disappears only after page reload. Cause: send() pushes the raw accumulated `acc` into messages instead of the cleaned text. Fix: strip the generate-file fence client-side (or have the backend send the cleaned content in the 'done' SSE event and use it).", "selector": "[data-testid=\"message-assistant\"]", "priority": "HIGH"},
+      {"component": "Admin route", "issue": "No role guard on /admin — a non-admin user who navigates directly to /admin sees the full Admin Dashboard shell (title, empty table) while 3 API calls return 403 that are silently swallowed (.catch(() => {})). Should redirect to /dashboard or show an 'Admin access required' message.", "selector": "/admin", "priority": "MEDIUM"},
+      {"component": "Admin instructions modal", "issue": "Escape key does not close the modal (only backdrop/X). While open, the fixed overlay intercepts all clicks. Added missing data-testid=\"admin-modal-close\" to the X button.", "selector": "[data-testid=\"admin-modal-close\"]", "priority": "LOW"},
+      {"component": "Admin bots table", "issue": "bots.slice(0, 200) with 210 total bots — last 10 bots cannot be viewed/edited; no pagination control.", "selector": "[data-testid^=\"admin-bot-row-\"]", "priority": "MEDIUM"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "All Bots / catalog data quality", "issues": ["Several bot names are raw DOCX titles and read badly, e.g. 'ADD on Document for NEO Matrix - USE in Tandum with' (truncated + typo 'Tandum'), 'Osv5 - Book Writer V5', 'Image Seed Original NO Longer Works'. Consider cleaning names during import.", "Multiple near-duplicate 'Book Writer V1..V8' entries (19 bots in Book Writing suite) reduce perceived dedup quality."]},
+      {"screen": "Matrix theme / layout", "issues": ["No contrast, spacing or overflow problems found at 1920x1080 or 390x844; no horizontal overflow on mobile; mobile drawer works."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/conftest.py",
+    "/app/backend/tests/backend_test.py",
+    "/app/backend/tests/test_files_and_images.py",
+    "/app/test_reports/pytest/results_nonchat.xml",
+    "/app/test_reports/pytest/results_chat.xml",
+    "/app/test_reports/pytest/results_files.xml"
+  ],
+  "action_items": [
+    "BotWorkspace.send(): do not render the raw generate-file block — strip it from `acc` before pushing the assistant message (or use cleaned text returned in the 'done' event).",
+    "Add an admin role guard for the /admin route (redirect or 403 message) instead of rendering the admin shell for non-admins.",
+    "Paginate /api/admin/bots + Admin table (currently slice(0,200) hides 10 of 210 bots).",
+    "Optionally: close the admin instructions modal on Escape.",
+    "Review importer capability heuristics — capabilities.image=true for all 150 bots makes image gating meaningless."
+  ],
+  "critical_code_review_comments": [
+    "Admin.jsx swallows API errors with .catch(() => {}) — 403/500 leaves the user on a blank table with no feedback; surface an error state.",
+    "server.py chat_stream silently drops images for non-image bots; consider returning a warning SSE event so the UI can inform the user.",
+    "/api/files/{id}/download depends on `request: Request = None` default for the header-auth fallback; works but is fragile — prefer an explicit Depends(optional_user) plus token fallback.",
+    "Bot detail/list responses correctly exclude system_instructions and _id (verified); admin detail correctly includes instructions and is 403-protected for non-admins."
+  ],
+  "updated_files": [
+    "/app/backend/tests/conftest.py",
+    "/app/backend/tests/backend_test.py",
+    "/app/backend/tests/test_files_and_images.py",
+    "/app/frontend/src/pages/Admin.jsx (added data-testid to modal close button only)"
+  ],
+  "success_rate": {"backend": "100% (52 passed, 1 skipped, 0 failed)", "frontend": "~92% (all flows work; 1 HIGH visual bug, 1 missing route guard, 2 minor admin issues)"},
+  "seed_data_creation": "Registered throwaway users TEST_*@legionqa.com via API and UI (TEST_uirlfdto@legionqa.com); created + deleted TEST_ memories and conversations for testuser@legion.ai; generated DOCX files (TEST_Doc.docx, QA_Doc.docx). testuser memory_enabled restored to true; admin featured/status toggles reverted (150 active bots verified after).",
+  "should_call_test_agent_after_fix": true,
+  "should_main_agent_self_test": false,
+  "test_credentials": "admin@legion.ai / LegionAdmin2026! (role admin, verified) ; testuser@legion.ai / TestUser2026! (verified) — from /app/memory/test_credentials.md",
+  "context_for_next_testing_agent": "Correct slugs: bots 'book-writer', 'time-machine'; suite slugs are business,time-machine,book-writing,science,research,writing,coding,cannabis,movie-creation,agriculture,utility,creative,health,specialized (NOT 'specialist-minds' — that's only the hostname). Run non-AI tests with `pytest tests/ -m 'not chat'` (fast, 5s) and AI tests with `-m chat -n 0` (~30s, consumes LLM credits). SSE helper sse_chat() is in both test files. Frontend E2E already covers auth, dashboard, all bots filters, suites, workspace streaming, model selector, favorites, conversations rename/delete, settings memory, admin panel, mobile drawer. Re-verify: (1) generate-file JSON no longer visible during streaming, (2) /admin blocked for non-admin, (3) admin table pagination.",
+  "rca_of_the_issue": "Generate-file leak: backend tools.extract_file_request() strips the ```generate-file``` fence before persisting the assistant message, but BotWorkspace.send() appends the raw streamed accumulator `acc` to local state, so the JSON spec is visible until the conversation is re-fetched. Confirmed by reopening the same conversation after reload — the JSON block is absent and only the download button remains. Admin guard: App.js <Protected> only checks authentication; Admin.jsx has no role check and swallows the resulting 403s."
+}

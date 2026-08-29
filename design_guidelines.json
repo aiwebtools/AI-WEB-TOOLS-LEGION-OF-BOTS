@@ -1,0 +1,128 @@
+{
+  "project_name": "THE AI WEB TOOLS LEGION OF BOTS",
+  "short_name": "LEGION",
+  "theme": "dark",
+  "typography": {
+    "headings": {
+      "family": "Chivo",
+      "weights": ["400", "700", "900"],
+      "classes": "font-sans tracking-tight"
+    },
+    "body": {
+      "family": "IBM Plex Sans",
+      "weights": ["400", "500", "600"],
+      "classes": "font-sans leading-relaxed"
+    },
+    "mono": {
+      "family": "JetBrains Mono",
+      "weights": ["400", "700"],
+      "classes": "font-mono text-sm tracking-tight"
+    },
+    "instructions": "Use Chivo for high-impact headers (H1-H3). Use IBM Plex Sans for long-form reading and chat messages. Use JetBrains Mono for system signals, metadata, bot names, code blocks, and the 'MORE AI TOOLS' button to give a terminal feel."
+  },
+  "colors": {
+    "background": "#050505",
+    "surface": "#0C0C0C",
+    "surface_elevated": "#141414",
+    "primary": "#00FF41",
+    "primary_hover": "#00D135",
+    "primary_muted": "rgba(0, 255, 65, 0.15)",
+    "text_primary": "#F3F4F6",
+    "text_secondary": "#9CA3AF",
+    "text_muted": "#4B5563",
+    "border": "#1F2937",
+    "border_glow": "rgba(0, 255, 65, 0.3)",
+    "instructions": "Emulate 'aiwebtools.app' with a deep void canvas (almost black). The primary color MUST be a piercing Matrix green. Use primary_muted for active states backgrounds and selection."
+  },
+  "visual_enhancers": {
+    "retro_futurism": "Apply the 'Terminal Look'. Interfaces should feel technical, code-driven, and mysterious. Avoid generic soft SaaS aesthetics.",
+    "scanlines": "Use a subtle repeating-linear-gradient overlay on the hero section to mimic a CRT or holographic terminal.",
+    "glow_effects": "Use drop-shadow-[0_0_8px_rgba(0,255,65,0.4)] on active icons and key matrix-green elements.",
+    "borders": "Use strict 1px solid borders. Do not use soft, wide drop-shadows. Use hairline #1F2937 borders to separate content.",
+    "textures": "Incorporate subtle grain (noise) in the global background to kill digital flatness."
+  },
+  "component_styling": {
+    "buttons": {
+      "primary": "Sharp edges (rounded-sm max), solid #00FF41 background, black text. Hover: slightly brighter, scale up very subtly.",
+      "secondary": "Transparent background, 1px solid #1F2937 border, text #F3F4F6. Hover: border #00FF41, text #00FF41.",
+      "more_ai_tools": "Prominent placement throughout the app. Should stand out, perhaps using a glowing border or terminal-style chevron (e.g., '> MORE AI TOOLS_'). Link MUST open 'https://aiwebtools.app' in a new tab."
+    },
+    "cards": {
+      "base": "Flat solid surfaces (#0C0C0C), 1px subtle border (#1F2937). No shadow.",
+      "hover": "Border transitions to #00FF41 or rgba(0,255,65,0.5). Slight lift (-translate-y-1).",
+      "suite_cards": "Grid based, displaying the suite icon, name, and count of bots. Use high density bento-style grids."
+    },
+    "inputs_and_chat": {
+      "chat_bubble_user": "Solid #141414 surface, subtle border, text-primary.",
+      "chat_bubble_bot": "Transparent background, distinct left-border (2px solid #00FF41), padding on left, text-primary.",
+      "composer": "Bottom-fixed or sticky, thick dark background, 1px border. Model selector should be a custom dropdown, not a native <select>."
+    },
+    "headers_and_nav": {
+      "base": "Solid #050505 background or heavy backdrop-blur-xl with bg-black/80. DO NOT use complete transparent backgrounds.",
+      "border": "Hard 1px bottom border (#1F2937)."
+    }
+  },
+  "layouts": {
+    "dashboard": "Dense and highly functional. Left sidebar for navigation (Explore, Favorites, Recent, History, Admin). Center area for dynamic content (Suites Grid, Bots Grid).",
+    "bot_workspace": "Three-pane layout. Left: Conversation History. Center: Main Chat interface (streaming text, markdown). Right: Bot details/capabilities and configuration (model selector, memory settings). Collapsible sidebars.",
+    "grids": "Use CSS Grid aggressively. For Suite and Bot cards, use responsive grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 with gap-4 or gap-6."
+  },
+  "motion": {
+    "transitions": "Fast and snappy. transition-colors duration-150. Do not use 'transition-all'.",
+    "entrance": "Staggered fade-up for grid items. Use framer-motion if possible.",
+    "chat_streaming": "Cursor blinking effect at the end of the streaming response (a green block cursor '█')."
+  },
+  "accessibility": {
+    "contrast": "Ensure the green (#00FF41) against black/dark-grey meets WCAG AA standards. If text on green, text must be black.",
+    "testing": "All interactive elements (buttons, links, inputs, dropdowns) MUST have a 'data-testid' attribute in kebab-case."
+  },
+  "media": {
+    "icons": "Use lucide-react or Phosphor Icons (regular or bold weight) for a sharp, technical look. Avoid playful/rounded icons.",
+    "3d_libraries": "Optional: Use tsParticles for a subtle falling 'digital rain' or constellation node network in the hero section."
+  },
+  "image_urls": {
+    "hero_background": {
+      "url": "https://images.unsplash.com/photo-1761599821310-da0d6356b4f3?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA2MjJ8MHwxfHNlYXJjaHw0fHxtYXRyaXglMjBkaWdpdGFsJTIwcmFpbiUyMGRhcmt8ZW58MHx8fHwxNzg4MDMzNTEwfDA&ixlib=rb-4.1.0&q=85",
+      "description": "Abstract green digital pattern with vertical lines",
+      "placement": "Landing page hero background (needs heavy black overlay, bg-black/80)"
+    },
+    "suite_abstract_1": {
+      "url": "https://images.unsplash.com/photo-1739288717689-1687e8133358?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA5OTV8MHwxfHNlYXJjaHwzfHxhaSUyMHJvYm90JTIwZGFyayUyMGdyZWVuJTIwZ2xvd3xlbnwwfHx8fDE3ODgwMzM1MTB8MA&ixlib=rb-4.1.0&q=85",
+      "description": "A green circular object with a black background",
+      "placement": "Bot or Suite avatar placeholder"
+    },
+    "suite_abstract_2": {
+       "url": "https://images.unsplash.com/photo-1768327240007-2f45398639d5?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA5OTV8MHwxfHNlYXJjaHw0fHxhaSUyMHJvYm90JTIwZGFyayUyMGdyZWVuJTIwZ2xvd3xlbnwwfHx8fDE3ODgwMzM1MTB8MA&ixlib=rb-4.1.0&q=85",
+       "description": "Abstract green and blue geometric shapes on black background",
+       "placement": "Banner for coding/science suite"
+    }
+  },
+  "instructions_to_main_agent": [
+    "Strictly follow the Matrix Theme: dark mode only, deep void backgrounds (#050505), and neon green accents (#00FF41).",
+    "Avoid generic SaaS looks. Do not use gradients unless it's a subtle background glow.",
+    "Implement the 'MORE AI TOOLS' button prominently in headers and sidebars, linking to 'https://aiwebtools.app' with target='_blank'.",
+    "Use Shadcn UI components but heavily customize them: remove rounded corners (use rounded-none or rounded-sm), change borders to hard 1px #1F2937, and adjust focus rings to neon green.",
+    "The Bot Workspace MUST feel like a pro terminal: markdown support, syntax highlighting for code blocks, and a clean, dense layout.",
+    "Ensure the layout is highly responsive. The 3-pane Bot Workspace should elegantly collapse on mobile (e.g., sidebars hide behind hamburger menus or tabs).",
+    "Do not use transparent headers over scrolling content. Always use a solid background or a heavy backdrop blur."
+  ],
+  "UNIVERSAL GUIDELINES FOR MAIN AGENT": [
+    "You tend to converge toward generic, 'on distribution' outputs. In frontend design, this creates what users call the 'AI slop' aesthetic. Avoid this: make creative, distinctive frontends that surprise and delight.",
+    "Dark colors look good when used independently without gradients. DO NOT use dark colors as gradients.",
+    "Don't make generic centered layouts, simplistic gradients, and uniform styling.",
+    "Create depth through layered design elements with z-index hierarchy.",
+    "You MUST NOT apply universal transition (e.g., transition: all). Always add transitions for specific interactive elements.",
+    "You MUST NOT center align the app container. Do not add text-align: center to the root App class.",
+    "Every interaction needs micro-animations - hover states, transitions, and entrance animations. Static = dead.",
+    "Use 2-3x more spacing than feels comfortable. Cramped designs look cheap.",
+    "Subtle grain textures, noise overlays, custom cursors, selection states, and loading animations: separates good from extraordinary.",
+    "All interactive and key informational elements MUST include a 'data-testid' attribute to facilitate robust automated testing.",
+    "Use sonner for toasts, located in /app/frontend/src/components/ui/sonner.js or similar."
+  ],
+  "GENERAL UI UX DESIGN GUIDELINES": [
+    "Adopt 'Optical Alignment' over strict mathematical alignment for varied shapes (like icons next to text).",
+    "Ensure empty states tell a story instead of just showing 'No data'.",
+    "Error messages should be human-readable, context-aware, and provide a clear recovery path.",
+    "Forms should validate inline and gracefully guide the user to resolution."
+  ]
+}
