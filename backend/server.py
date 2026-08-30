@@ -14,19 +14,16 @@ from typing import Optional, List
 from fastapi import FastAPI, APIRouter, HTTPException, Request, Depends, UploadFile, File, Form
 from fastapi.responses import StreamingResponse, FileResponse
 from starlette.middleware.cors import CORSMiddleware
-from motor.motor_asyncio import AsyncIOMotorClient
 from pydantic import BaseModel, EmailStr, Field
 
 import auth as A
 import llm as L
 import tools as T
+from database import client, db
 from seed import seed_catalog, migrate_bots, migrate_dedup_v3, migrate_names_v4
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("legion")
-
-client = AsyncIOMotorClient(os.environ["MONGO_URL"])
-db = client[os.environ["DB_NAME"]]
 
 app = FastAPI(title="LEGION API")
 api = APIRouter(prefix="/api")
@@ -484,46 +481,47 @@ async def chat_stream(body: ChatBody, user=Depends(A.get_current_user)):
         yield f"data: {json.dumps({'type': 'start', 'conversation_id': conv['id'], 'model': note_model})}\n\n"
         acc = ""
         try:
-            async for chunk in L.stream_bot_reply(bot, model_id, history, body.message, images, memory_text, files=attach_files, extra_context=extra_context):
-                acc += chunk
-                yield f"data: {json.dumps({'type': 'delta', 'content': chunk})}\n\n"
-        except Exception as e:
-            logger.exception("stream error")
-            err = "The AI provider returned an error. Please try again or switch models."
-            yield f"data: {json.dumps({'type': 'error', 'content': err + f' ({str(e)[:120]})'})}\n\n"
-            if not acc:
-                _cleanup_tmp(tmp_dir)
-                return
-
-        # document generation
-        gen_file = None
-        spec, cleaned = T.extract_file_request(acc)
-        final_text = cleaned if spec else acc
-        if spec:
             try:
-                f = T.generate_file(spec)
-                rec = {
-                    "id": f["id"], "user_id": user["id"], "conversation_id": conv["id"],
-                    "filename": f["filename"], "format": f["format"], "mime": f["mime"],
-                    "size": f["size"], "disk_path": f["disk_path"], "created_at": f["created_at"],
-                }
-                await db.generated_files.insert_one({**rec})
-                gen_file = {k: rec[k] for k in ("id", "filename", "format", "size")}
-            except Exception:
-                logger.exception("file gen failed")
+                async for chunk in L.stream_bot_reply(bot, model_id, history, body.message, images, memory_text, files=attach_files, extra_context=extra_context):
+                    acc += chunk
+                    yield f"data: {json.dumps({'type': 'delta', 'content': chunk})}\n\n"
+            except Exception as e:
+                logger.exception("stream error")
+                err = "The AI provider returned an error. Please try again or switch models."
+                yield f"data: {json.dumps({'type': 'error', 'content': err + f' ({str(e)[:120]})'})}\n\n"
+                if not acc:
+                    return
 
-        assistant_msg = {
-            "id": str(uuid.uuid4()), "conversation_id": conv["id"], "role": "assistant",
-            "content": final_text, "model": model_id,
-            "generated_file": gen_file, "created_at": now_iso(),
-        }
-        await db.messages.insert_one({**assistant_msg})
-        await db.conversations.update_one({"id": conv["id"]}, {"$set": {"last_activity": now_iso(), "model": model_id}})
+            # document generation
+            gen_file = None
+            spec, cleaned = T.extract_file_request(acc)
+            final_text = cleaned if spec else acc
+            if spec:
+                try:
+                    f = T.generate_file(spec)
+                    rec = {
+                        "id": f["id"], "user_id": user["id"], "conversation_id": conv["id"],
+                        "filename": f["filename"], "format": f["format"], "mime": f["mime"],
+                        "size": f["size"], "disk_path": f["disk_path"], "created_at": f["created_at"],
+                    }
+                    await db.generated_files.insert_one({**rec})
+                    gen_file = {k: rec[k] for k in ("id", "filename", "format", "size")}
+                except Exception:
+                    logger.exception("file gen failed")
 
-        if gen_file:
-            yield f"data: {json.dumps({'type': 'file', 'file': gen_file})}\n\n"
-        yield f"data: {json.dumps({'type': 'done', 'message_id': assistant_msg['id'], 'conversation_id': conv['id']})}\n\n"
-        _cleanup_tmp(tmp_dir)
+            assistant_msg = {
+                "id": str(uuid.uuid4()), "conversation_id": conv["id"], "role": "assistant",
+                "content": final_text, "model": model_id,
+                "generated_file": gen_file, "created_at": now_iso(),
+            }
+            await db.messages.insert_one({**assistant_msg})
+            await db.conversations.update_one({"id": conv["id"]}, {"$set": {"last_activity": now_iso(), "model": model_id}})
+
+            if gen_file:
+                yield f"data: {json.dumps({'type': 'file', 'file': gen_file})}\n\n"
+            yield f"data: {json.dumps({'type': 'done', 'message_id': assistant_msg['id'], 'conversation_id': conv['id']})}\n\n"
+        finally:
+            _cleanup_tmp(tmp_dir)
 
     return StreamingResponse(event_gen(), media_type="text/event-stream",
                              headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no", "Connection": "keep-alive"})
@@ -685,6 +683,7 @@ async def admin_import(file: UploadFile = File(...), admin=Depends(A.get_admin_u
     if len(data) > 200 * 1024 * 1024:
         raise HTTPException(status_code=400, detail="Archive too large (max 200MB).")
     tmp = tempfile.mkdtemp(prefix="legion_import_")
+    catalog = None
     try:
         zip_path = os.path.join(tmp, "archive.zip")
         with open(zip_path, "wb") as fh:

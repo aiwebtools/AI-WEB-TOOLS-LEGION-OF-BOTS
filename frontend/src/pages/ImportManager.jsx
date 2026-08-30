@@ -86,7 +86,7 @@ export default function ImportManager() {
           </div>
           <div className="max-h-72 overflow-y-auto border border-border rounded-sm mb-4">
             {preview.detected_bots.map((b, i) => (
-              <div key={i} className="flex items-center gap-3 px-3 py-2 border-b border-border last:border-0" data-testid={`import-bot-${i}`}>
+              <div key={`${b.slug}-${i}`} className="flex items-center gap-3 px-3 py-2 border-b border-border last:border-0" data-testid={`import-bot-${i}`}>
                 {b.status === "new" ? <Sparkles className="w-4 h-4 text-matrix shrink-0" /> : <AlertTriangle className="w-4 h-4 text-yellow-500 shrink-0" />}
                 <span className="text-sm text-white flex-1 truncate">{b.name}</span>
                 <span className="text-[10px] font-mono text-muted-foreground hidden sm:block">{b.suite_label}</span>

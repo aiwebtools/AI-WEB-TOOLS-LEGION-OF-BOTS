@@ -218,7 +218,7 @@ export default function BotWorkspace() {
                 <p className="text-sm text-muted-foreground max-w-md mx-auto mb-6">{bot.description}</p>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-w-lg mx-auto">
                   {suggestions.map((s, i) => (
-                    <button key={i} data-testid={`suggestion-${i}`} onClick={() => send(s)} className="text-left px-3 py-2.5 border border-border rounded-sm text-sm text-muted-foreground hover:border-matrix/50 hover:text-white transition-colors">{s}</button>
+                    <button key={s} data-testid={`suggestion-${i}`} onClick={() => send(s)} className="text-left px-3 py-2.5 border border-border rounded-sm text-sm text-muted-foreground hover:border-matrix/50 hover:text-white transition-colors">{s}</button>
                   ))}
                 </div>
               </div>

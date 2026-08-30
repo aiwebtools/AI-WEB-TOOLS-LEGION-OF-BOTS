@@ -17,7 +17,7 @@ export default function GlobalSearch({ open, onClose }) {
     try {
       const { data } = await api.get(`/search`, { params: { q: term } });
       setRes(data);
-    } catch { /* ignore */ } finally { setLoading(false); }
+    } catch (err) { console.error("Legion search failed:", err); } finally { setLoading(false); }
   }, []);
 
   useEffect(() => {

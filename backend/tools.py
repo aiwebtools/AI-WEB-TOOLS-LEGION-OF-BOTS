@@ -21,6 +21,7 @@ def extract_file_request(text: str):
     m = GEN_BLOCK_RE.search(text)
     if not m:
         return None, text
+    spec = None
     try:
         spec = json.loads(m.group(1))
     except Exception:
@@ -99,6 +100,7 @@ def generate_file(spec: dict) -> dict:
     if not filename.lower().endswith("." + fmt):
         filename = f"{os.path.splitext(filename)[0]}.{fmt}"
 
+    data, mime = b"", "text/plain"
     if fmt == "docx":
         data = _make_docx(title, content)
         mime = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"

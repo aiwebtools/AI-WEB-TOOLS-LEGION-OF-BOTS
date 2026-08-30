@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="2" skipped="0" tests="25" time="7.298" timestamp="2026-08-30T03:27:47.430716+00:00" hostname="agent-env-de950128-8709-4005-905b-e6c82e632429"><testcase classname="tests.test_iteration4.TestCoreFlows" name="test_suites_sum_to_150" time="0.144" /><testcase classname="tests.test_iteration4.TestAuthRegression" name="test_backend_boots_and_bots_served" time="0.160" /><testcase classname="tests.test_iteration4.TestCoreFlows" name="test_suite_filter_and_search" time="0.351" /><testcase classname="tests.test_iteration4.TestCoreFlows" name="test_bot_detail_and_404" time="0.373" /><testcase classname="tests.test_iteration4.TestAuthRegression" name="test_login_admin_and_user" time="0.710" /><testcase classname="tests.test_iteration4.TestAuthRegression" name="test_auth_me_with_bearer" time="0.361" /><testcase classname="tests.test_iteration4.TestAuthRegression" name="test_me_without_token_401" time="0.046" /><testcase classname="tests.test_iteration4.TestCoreFlows" name="test_dashboard" time="0.784" /><testcase classname="tests.test_iteration4.TestAuthRegression" name="test_me_invalid_token_401" time="0.044" /><testcase classname="tests.test_iteration4.TestAuthRegression" name="test_wrong_password_rejected" time="0.274" /><testcase classname="tests.test_iteration4.TestAuthRegression" name="test_register_new_user_then_me" time="0.426" /><testcase classname="tests.test_iteration4.TestCoreFlows" name="test_favorites_add_remove" time="0.630" /><testcase classname="tests.test_iteration4.TestAuthRegression" name="test_non_admin_403[/admin/overview]" time="0.050" /><testcase classname="tests.test_iteration4.TestAuthRegression" name="test_non_admin_403[/admin/bots]" time="0.043" /><testcase classname="tests.test_iteration4.TestAuthRegression" name="test_non_admin_403[/admin/import]" time="0.082" /><testcase classname="tests.test_iteration4.TestAuthRegression" name="test_admin_routes_work_for_admin" time="0.292" /><testcase classname="tests.test_iteration4.TestCoreFlows" name="test_recent" time="0.087" /><testcase classname="tests.test_iteration4.TestCoreFlows" name="test_memory_add_remove_toggle" time="0.514" /><testcase classname="tests.test_iteration4.TestConversations" name="test_list_rename_delete_existing" time="0.335" /><testcase classname="tests.test_iteration4.TestConversations" name="test_other_user_cannot_read_conversation" time="0.098" /><testcase classname="tests.test_iteration4.TestTempDirCleanup" name="test_chat_with_csv_attachment_cleans_tmp" time="2.009"><failure message="Failed: LLM error during attachment chat: The AI provider returned an error. Please try again or switch models. (Failed to start streaming completion: litellm.RateLimitError: RateLimitError: OpenAIException - Budget has been exceeded)">self = &lt;test_iteration4.TestTempDirCleanup object at 0xfa0752b21bd0&gt;
+user_auth = {'token': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJmNTQ1ZmYzZi1kMzExLTQ4MDUtYTRjZS02MDc3ZTAzMWVhY2MiLCJlbWFpbC...'id': 'f545ff3f-d311-4805-a4ce-6077e031eacc', 'email': 'testuser@legion.ai', 'name': 'Test User', 'role': 'user', ...}}
+anon_client = &lt;requests.sessions.Session object at 0xfa0752adffd0&gt;
+
+    def test_chat_with_csv_attachment_cleans_tmp(self, user_auth, anon_client):
+        bots = anon_client.get(f"{API}/bots", timeout=60).json()
+        target = None
+        for b in bots:
+            det = anon_client.get(f"{API}/bots/{b['slug']}", timeout=30).json()
+            if det.get("capabilities", {}).get("files"):
+                target = det
+                break
+        assert target, "no files-capable bot found"
+        csv = base64.b64encode(b"name,score\nalice,10\nbob,20\n").decode()
+        before = set(glob.glob("/tmp/legion_up_*"))
+        evs = _sse_events(user_auth["token"], {
+            "bot_slug": target["slug"],
+            "message": "In under 12 words, list the columns in the attached CSV.",
+            "files": [{"name": "TEST_it4.csv", "mime": "text/csv", "data": csv}],
+        })
+        after = set(glob.glob("/tmp/legion_up_*"))
+        assert after &lt;= before, f"leaked temp dirs: {after - before}"
+        assert any(e["type"] == "start" for e in evs), evs[:2]
+        errs = [e for e in evs if e["type"] == "error"]
+        if errs:
+&gt;           pytest.fail(f"LLM error during attachment chat: {errs[0]['content'][:200]}")
+E           Failed: LLM error during attachment chat: The AI provider returned an error. Please try again or switch models. (Failed to start streaming completion: litellm.RateLimitError: RateLimitError: OpenAIException - Budget has been exceeded)
+
+tests/test_iteration4.py:223: Failed</failure></testcase><testcase classname="tests.test_iteration4.TestImportManager" name="test_preview_publish_duplicate_and_history" time="0.699" /><testcase classname="tests.test_iteration4.TestImportManager" name="test_import_rejects_non_zip" time="0.126" /><testcase classname="tests.test_iteration4.TestTempDirCleanup" name="test_chat_without_attachment" time="1.666"><failure message="Failed: LLM error: The AI provider returned an error. Please try again or switch models. (Failed to start streaming completion: litellm.RateLimitError: RateLimitError: OpenAIException - Budget has been exceeded)">self = &lt;test_iteration4.TestTempDirCleanup object at 0xfa0752b22310&gt;
+user_auth = {'token': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJmNTQ1ZmYzZi1kMzExLTQ4MDUtYTRjZS02MDc3ZTAzMWVhY2MiLCJlbWFpbC...'id': 'f545ff3f-d311-4805-a4ce-6077e031eacc', 'email': 'testuser@legion.ai', 'name': 'Test User', 'role': 'user', ...}}
+anon_client = &lt;requests.sessions.Session object at 0xfa0752adffd0&gt;
+
+    def test_chat_without_attachment(self, user_auth, anon_client):
+        slug = anon_client.get(f"{API}/bots", timeout=60).json()[0]["slug"]
+        evs = _sse_events(user_auth["token"], {"bot_slug": slug, "message": "Reply with just: PONG"})
+        errs = [e for e in evs if e["type"] == "error"]
+        if errs:
+&gt;           pytest.fail(f"LLM error: {errs[0]['content'][:200]}")
+E           Failed: LLM error: The AI provider returned an error. Please try again or switch models. (Failed to start streaming completion: litellm.RateLimitError: RateLimitError: OpenAIException - Budget has been exceeded)
+
+tests/test_iteration4.py:232: Failed</failure></testcase><testcase classname="tests.test_iteration4.TestPythonTool" name="test_python_tool_42" time="0.081" /></testsuite></testsuites>
